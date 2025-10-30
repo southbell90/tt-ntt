@@ -6,6 +6,7 @@
 #include <vector>
 #include <numeric>
 #include <stdexcept>
+#include <iostream>
 
 namespace generator {
 
@@ -16,10 +17,11 @@ public:
     uint32_t N_ = std::pow(2,n_);
     // q_ 는 10~20-bit 크기이며, q mod 2N = 1 을 만족하는 prime number.
     uint32_t q_ = 65537;
-    std::vector<uint32_t> arr_{N_};
+    std::vector<uint32_t> arr_;
 
     NttHelper() {
         // 초기 다항식의 계수들은 [0, q-1] 사이의 랜덤 값들을 갖는다.
+        arr_.resize(N_);
         std::random_device rd;
         std::mt19937 engine(rd());
         std::uniform_int_distribution<std::uint32_t> dist(0, q_ - 1);
@@ -41,7 +43,6 @@ std::vector<uint32_t> NttHelper::makeTwiddleFactor() {
     // base^exp mod m의 값을 구한다.
     auto mod_pow = [](uint64_t base, uint64_t exp, uint64_t m) {
         uint64_t result = 1;
-        base %= m;
         while (exp > 0) {
             if (exp & 1) {
                 result = (result * base) % m;
@@ -71,8 +72,8 @@ std::vector<uint32_t> NttHelper::makeTwiddleFactor() {
 
     const uint32_t target_order = 2 * N_;
 
-    // q % 2N = 1 을 만족해야 한다.
-    if (q_ - 1 % target_order != 0) {
+    //q % 2N = 1 을 만족해야 한다.
+    if (q_ - 1 % target_order == 0) {
         throw std::runtime_error("q_-1 not divisible by 2N_, cannot find primitive 2N-th root.");
     }
 
@@ -110,14 +111,14 @@ std::vector<uint32_t> NttHelper::makeTwiddleFactor() {
     }
 
     // 구한 twiddle factor로 행렬 W를 만든다.
-    std::vector<uint32_t> w(N_*N_);
+    std::vector<uint32_t> W(N_*N_);
     for(int i = 0; i < N_; i++) {
         for(int j = 0; j < N_; j++) {
-            w.push_back(mod_pow(twiddle, 2*i*j + j, q_));
+            W.at(i * N_ + j) = mod_pow(twiddle, 2*i*j + j, q_);
         }
     }
 
-    return w;
+    return W;
 }
 
 
