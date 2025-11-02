@@ -13,15 +13,16 @@ namespace generator {
 class NttHelper {
 public:
     //전체 다항식의 크기  N = 2^n
-    uint32_t n_ = 14;
-    uint32_t N_ = std::pow(2,n_);
+    uint32_t n_ = 16;
+    uint64_t N_ = std::pow(2,n_);
     // q_ 는 10~20-bit 크기이며, q mod 2N = 1 을 만족하는 prime number.
-    uint32_t q_ = 65537;
+    uint32_t q_ = 8650753;    // 2^24 ~ 2^30 사이의 q = 8650753
     std::vector<uint32_t> arr_;
 
     NttHelper() {
         // 초기 다항식의 계수들은 [0, q-1] 사이의 랜덤 값들을 갖는다.
-        arr_.resize(N_);
+        // tenstorrent는 32x32 tile 크기의 계산 밖에 못 하므로 padding을 위해 32를 곱해준다.
+        arr_.resize(N_ * 32);
         std::random_device rd;
         std::mt19937 engine(rd());
         std::uniform_int_distribution<std::uint32_t> dist(0, q_ - 1);
@@ -105,18 +106,39 @@ std::vector<uint32_t> NttHelper::makeTwiddleFactor() {
         }
     }
 
+    std::cout << "twiddle = " << twiddle << std::endl;
+
     // twiddle factor를 찾지 못할 경우 runtime error를 낸다.
     if(twiddle == 0) {
         throw std::runtime_error("Failed to find primitive 2N-th root of unity.");
     }
 
     // 구한 twiddle factor로 행렬 W를 만든다.
+    uint32_t twiddle_i = 1;
+    uint32_t two_twiddle = twiddle * twiddle;
     std::vector<uint32_t> W(N_*N_);
     for(int i = 0; i < N_; i++) {
+        if(i != 0) {
+            // twiddle^(2i)
+            twiddle_i *= two_twiddle;
+            twiddle_i %= q_;
+        }
+
+        uint32_t twiddle_j = 1;
         for(int j = 0; j < N_; j++) {
-            W.at(i * N_ + j) = mod_pow(twiddle, 2*i*j + j, q_);
+            if(j != 0) {
+                // twiddle^j
+                twiddle_j *= twiddle;
+                twiddle_j %= q_;
+                // twiddle^(2ij+j)
+                twiddle_j *= twiddle_i;
+                twiddle_j %= q_;
+            }
+            W.at(i * N_ + j) = twiddle_j;
         }
     }
+
+    std::cout << "making twiddle factor matrix complete" << std::endl;
 
     return W;
 }
