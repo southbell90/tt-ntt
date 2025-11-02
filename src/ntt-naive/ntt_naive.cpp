@@ -148,7 +148,7 @@ void matmul_single_core(
 }
 
 
-// 1단계 32-bit matrix를 8-bit matrix 4개로 분할한다.
+// 1단계 32-bit matrix를 8-bit matrix 4개로 분할한다. a = b c d e
 void matrix_seg(std::vector<uint32_t>& a, std::vector<uint8_t>& b, std::vector<uint8_t>& c, std::vector<uint8_t>& d, std::vector<uint8_t>& e) {
     const std::size_t n = a.size();
     for (std::size_t i = 0; i < n; ++i) {
@@ -168,12 +168,14 @@ int main() {
     std::vector<uint32_t> W = nttHelper.makeTwiddleFactor();
 
     // 2N-th root of unity = 858584
-    fmt::print("N = 2^16, q = 8650753 일 때의 primitive 2N-th root of unity - {}\n", W.at(1));
+    // fmt::print("N = 2^16, q = 8650753 일 때의 primitive 2N-th root of unity - {}\n", W.at(1));
 
     std::vector<uint32_t> golden_output(nttHelper.N_);
     golden_matmul(nttHelper.arr_, W, golden_output, nttHelper.N_, nttHelper.q_);
 
     fmt::print("golden output b_0 = {}\n", golden_output.at(0));
+
+    fmt::print("===== stage 1 start =====\n");
 
     // 1단계
     // 원본 행렬 X = y[3] y[2] y[1] y[0] 위치대로 분해된다. (32-bit = 8 8 8 8)
@@ -185,12 +187,9 @@ int main() {
 
     matrix_seg(W, W_seg.at(3), W_seg.at(2), W_seg.at(1), W_seg.at(0));
 
-    fmt::print("matrix segmantation\n");
-    fmt::print("W = {}, W_3 = {}, W_2 = {}, W_1 = {}, W_0 = {} , index at = {}\n", 
-        W.at(2), W_seg.at(3).at(2), W_seg.at(2).at(2), W_seg.at(1).at(2), W_seg.at(0).at(2), 2);
-    fmt::print("a = {}, a_3 = {}, a_2 = {}, a_1 = {}, a_0 = {} , index at = {}\n", 
-        nttHelper.arr_.at(0), arr_seg.at(3).at(0), arr_seg.at(2).at(0), arr_seg.at(1).at(0), arr_seg.at(0).at(0), 0);
+    fmt::print("===== stage 1 complete =====\n");
     
+    fmt::print("===== stage 2 start =====\n");
 
     // 2단계
     // tenstorrent FPU에서 W * a 의 행렬 곱을 수행한다.
@@ -199,18 +198,15 @@ int main() {
     constexpr int device_id = 0;
     std::shared_ptr<distributed::MeshDevice> mesh_device = distributed::MeshDevice::create_unit_mesh(device_id);
 
-    constexpr uint32_t N = 65536;   // N = 2^16
+    uint32_t N = nttHelper.N_;   // N = 2^16
 
-    static_assert(N % TILE_WIDTH == 0, "N must be divisible by TILE_WIDTH");
-
-    fmt::print("before tilizing vector\n");
+    // static_assert(N % TILE_WIDTH == 0, "N must be divisible by TILE_WIDTH");
 
     for(int i = 0; i < 4; i++) {
         W_seg.at(i) = tilize_nfaces(W_seg.at(i), N, N);
         arr_seg.at(i) = tilize_nfaces(arr_seg.at(i), N, TILE_WIDTH);
     }
 
-    fmt::print("tilizing vector complete\n");
 
     // result_vec[k] = W_i * arr_j , where k = 4 * i + j
     std::vector<std::vector<uint32_t>> result_vec(16, std::vector<uint32_t>(N * TILE_WIDTH));
@@ -224,22 +220,25 @@ int main() {
 
     fmt::print("===== stage 2 complete =====\n");
 
+    fmt::print("===== stage 3 start =====\n");
+
     // 3단계 8-bit integer 행렬들을 다시 32-bit integer 행렬 1개로 합친다.
     std::vector<uint64_t> result(N * TILE_WIDTH, 0);
     for(size_t i = 0; i < result.size(); i++) {
+        uint64_t temp_sum = 0;
         for(int j = 0; j < result_vec.size(); j++) {
-            uint32_t shift_amount = j / 4 + j % 4;
-            shift_amount *= 8;
-            result.at(i) += (result_vec.at(j).at(i) << shift_amount);
-            result.at(i) %= nttHelper.q_;
+            uint32_t shift_amount = (j / 4 + j % 4) * 8;
+            uint64_t accum = (uint64_t)result_vec.at(j).at(i) << shift_amount;
+            temp_sum += accum;
         }
+        result.at(i) = temp_sum % nttHelper.q_;
     }
 
     fmt::print("===== stage 3 complete =====\n");
 
     // golden_matmul의 실행결과와 FPU에서 실행한 결과를 비교한다.
     for(size_t i = 0; i < golden_output.size(); i++) {
-        if(golden_output.at(i) != result.at(i * 32)) {
+        if(golden_output.at(i) != result.at(i * TILE_WIDTH)) {
             fmt::print("test result invalid -- index : {}, golden_output = {}, result = {}\n", i, golden_output.at(i), result.at(i * 32));
             break;
         }

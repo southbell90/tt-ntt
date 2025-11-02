@@ -13,10 +13,10 @@ namespace generator {
 class NttHelper {
 public:
     //전체 다항식의 크기  N = 2^n
-    uint32_t n_ = 16;
+    uint32_t n_ = 5;
     uint64_t N_ = std::pow(2,n_);   // 2^16 = 65536
-    // q_ 는 10~20-bit 크기이며, q mod 2N = 1 을 만족하는 prime number.
-    uint32_t q_ = 8650753;    // 2^24 ~ 2^30 사이의 q = 8650753
+    // q mod 2N = 1 을 만족하는 prime number.
+    uint32_t q_ = 193;    // 2^24 ~ 2^30 사이의 q = 8650753
     std::vector<uint32_t> arr_;
 
     NttHelper() {
