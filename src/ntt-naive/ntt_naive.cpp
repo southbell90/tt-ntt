@@ -21,10 +21,10 @@ using namespace tt::tt_metal;
     golden_matmul 함수는 tenstorrent에서 연산을 제대로 했는지 검증하기 위한 정답지를 계산하는 함수이다.
     (W_NxN * a^T) 를 계산한다.
 */
-void golden_matmul(std::vector<uint32_t>& a, std::vector<uint32_t>& W, std::vector<uint32_t>& output, std::uint32_t N, std::uint32_t q) {
+void golden_matmul(std::vector<uint32_t>& a, std::vector<uint32_t>& W, std::vector<uint64_t>& output, std::uint32_t N, std::uint32_t q) {
     for(int i = 0; i < N; i++) {
         for(int j = 0; j < N; j++) {
-            output.at(i) += (W.at(i * N + j) * a.at(j * TILE_WIDTH));
+            output.at(i) += ((uint64_t)W.at(i * N + j) * (uint64_t)a.at(j * TILE_WIDTH));
             output.at(i) %= q;
         }
     }
@@ -170,7 +170,7 @@ int main() {
     // 2N-th root of unity = 858584
     // fmt::print("N = 2^16, q = 8650753 일 때의 primitive 2N-th root of unity - {}\n", W.at(1));
 
-    std::vector<uint32_t> golden_output(nttHelper.N_);
+    std::vector<uint64_t> golden_output(nttHelper.N_);
     golden_matmul(nttHelper.arr_, W, golden_output, nttHelper.N_, nttHelper.q_);
 
     fmt::print("golden output b_0 = {}\n", golden_output.at(0));
@@ -199,6 +199,7 @@ int main() {
     std::shared_ptr<distributed::MeshDevice> mesh_device = distributed::MeshDevice::create_unit_mesh(device_id);
 
     uint32_t N = nttHelper.N_;   // N = 2^16
+    const uint32_t q = nttHelper.q_;
 
     // static_assert(N % TILE_WIDTH == 0, "N must be divisible by TILE_WIDTH");
 
@@ -223,27 +224,33 @@ int main() {
     fmt::print("===== stage 3 start =====\n");
 
     // 3단계 8-bit integer 행렬들을 다시 32-bit integer 행렬 1개로 합친다.
+    uint64_t pow256_mod[7];
+    pow256_mod[0] = 1;
+    for(int i = 1; i < 7; i++) {
+        pow256_mod[i] = (pow256_mod[i-1] * 256ULL) % q;
+    }
+
     std::vector<uint64_t> result(N * TILE_WIDTH, 0);
     for(size_t i = 0; i < result.size(); i++) {
         uint64_t temp_sum = 0;
         for(int j = 0; j < result_vec.size(); j++) {
-            uint32_t shift_amount = (j / 4 + j % 4) * 8;
-            uint64_t accum = (uint64_t)result_vec.at(j).at(i) << shift_amount;
+            // uint32_t shift_amount = (j / 4 + j % 4) * 8;
+            uint64_t accum = ((uint64_t)result_vec.at(j).at(i)* pow256_mod[j / 4 + j % 4]) % q;
             temp_sum += accum;
+            temp_sum %= q;
         }
-        result.at(i) = temp_sum % nttHelper.q_;
+        result.at(i) = temp_sum;
     }
 
     fmt::print("===== stage 3 complete =====\n");
 
-    // golden_matmul의 실행결과와 FPU에서 실행한 결과를 비교한다.
+    //golden_matmul의 실행결과와 FPU에서 실행한 결과를 비교한다.
     for(size_t i = 0; i < golden_output.size(); i++) {
         if(golden_output.at(i) != result.at(i * TILE_WIDTH)) {
             fmt::print("test result invalid -- index : {}, golden_output = {}, result = {}\n", i, golden_output.at(i), result.at(i * 32));
             break;
         }
     }
-    
 
     pass &= mesh_device->close();
 

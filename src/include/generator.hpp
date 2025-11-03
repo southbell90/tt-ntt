@@ -12,11 +12,26 @@ namespace generator {
 
 class NttHelper {
 public:
+    /*
+        n = 5 , q = 193 
+        n = 6 , q = 257 
+        n = 7 , q = 769 
+        n = 8 , q = 7681 
+        n = 9 , q = 12289 
+        n = 10 , q = 18433 
+        n = 11 , q = 40961 
+        n = 12 , q = 65537 
+        n = 13 , q = 114689 
+        n = 14 , q = 163841 
+        n = 15 , q = 65537 
+        n = 16 , q = 8650753
+    */
+
     //전체 다항식의 크기  N = 2^n
-    uint32_t n_ = 5;
+    uint32_t n_ = 16;
     uint64_t N_ = std::pow(2,n_);   // 2^16 = 65536
     // q mod 2N = 1 을 만족하는 prime number.
-    uint32_t q_ = 193;    // 2^24 ~ 2^30 사이의 q = 8650753
+    uint32_t q_ = 8650753;    // 2^24 ~ 2^30 사이의 q = 8650753
     std::vector<uint32_t> arr_;
 
     NttHelper() {
@@ -114,8 +129,8 @@ std::vector<uint32_t> NttHelper::makeTwiddleFactor() {
     }
 
     // 구한 twiddle factor로 행렬 W를 만든다.
-    uint32_t twiddle_i = 1;
-    uint32_t two_twiddle = twiddle * twiddle;
+    uint64_t twiddle_i = 1;
+    uint64_t two_twiddle = twiddle * twiddle;
     std::vector<uint32_t> W(N_*N_);
     for(int i = 0; i < N_; i++) {
         if(i != 0) {
@@ -124,7 +139,7 @@ std::vector<uint32_t> NttHelper::makeTwiddleFactor() {
             twiddle_i %= q_;
         }
 
-        uint32_t twiddle_j = 1;
+        uint64_t twiddle_j = 1;
         for(int j = 0; j < N_; j++) {
             if(j != 0) {
                 // twiddle^j
