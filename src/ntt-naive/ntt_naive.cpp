@@ -24,6 +24,7 @@ using namespace tt::tt_metal;
 void golden_matmul(std::vector<uint32_t>& a, std::vector<uint32_t>& W, std::vector<uint64_t>& output, std::uint32_t N, std::uint32_t q) {
     for(int i = 0; i < N; i++) {
         for(int j = 0; j < N; j++) {
+            // q의 값이 2^16 보다 크면 2개의 곱이 2^32 uint 에서는 overflow가 날 수 있다.
             output.at(i) += ((uint64_t)W.at(i * N + j) * (uint64_t)a.at(j * TILE_WIDTH));
             output.at(i) %= q;
         }
@@ -192,7 +193,7 @@ int main() {
     fmt::print("===== stage 2 start =====\n");
 
     // 2단계
-    // tenstorrent FPU에서 W * a 의 행렬 곱을 수행한다.
+    // tenstorrent FPU 에서 W * a 의 행렬 곱을 수행한다.
     bool pass = true;
     
     constexpr int device_id = 0;
@@ -248,6 +249,7 @@ int main() {
     for(size_t i = 0; i < golden_output.size(); i++) {
         if(golden_output.at(i) != result.at(i * TILE_WIDTH)) {
             fmt::print("test result invalid -- index : {}, golden_output = {}, result = {}\n", i, golden_output.at(i), result.at(i * 32));
+            pass = false;
             break;
         }
     }

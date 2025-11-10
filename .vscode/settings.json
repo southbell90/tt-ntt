@@ -44,6 +44,22 @@
         "stacktrace": "cpp",
         "deque": "cpp",
         "map": "cpp",
-        "unordered_map": "cpp"
+        "unordered_map": "cpp",
+        "ctime": "cpp",
+        "cwctype": "cpp",
+        "ratio": "cpp",
+        "cctype": "cpp",
+        "clocale": "cpp",
+        "iostream": "cpp",
+        "istream": "cpp",
+        "numbers": "cpp",
+        "system_error": "cpp",
+        "locale": "cpp",
+        "stack": "cpp",
+        "coroutine": "cpp",
+        "tensor": "cpp",
+        "*.md": "cpp",
+        "reflect": "cpp",
+        "queue": "cpp"
     }
 }
