@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include "dataflow_api.h"
-
 #include "debug/dprint.h"
 
 void kernel_main() {
@@ -39,7 +38,19 @@ void kernel_main() {
     constexpr auto s7_args = TensorAccessorArgs<s6_args.next_compile_time_args_offset()>();
     auto s7 = TensorAccessor(s7_args, a_seg_3_addr, get_tile_size(cb_id_in_arr[7]));
 
-    auto* s_arr[] = { &s0, &s1, &s2, &s3, &s4, &s5, &s6, &s7 };
+    auto read_tile_from_accessor = [&](int accessor_idx, uint32_t tile_index, uint32_t l1_addr) {
+        switch (accessor_idx) {
+            case 0: noc_async_read_tile(tile_index, s0, l1_addr); break;
+            case 1: noc_async_read_tile(tile_index, s1, l1_addr); break;
+            case 2: noc_async_read_tile(tile_index, s2, l1_addr); break;
+            case 3: noc_async_read_tile(tile_index, s3, l1_addr); break;
+            case 4: noc_async_read_tile(tile_index, s4, l1_addr); break;
+            case 5: noc_async_read_tile(tile_index, s5, l1_addr); break;
+            case 6: noc_async_read_tile(tile_index, s6, l1_addr); break;
+            case 7: noc_async_read_tile(tile_index, s7, l1_addr); break;
+            default: ASSERT(false && "Invalid tensor accessor index");
+        }
+    };
 
     for (uint32_t i = 0; i < Nt; i++) {
         for(int w = 0; w < 4; w++) {
@@ -50,7 +61,7 @@ void kernel_main() {
                     {                                          
                         cb_reserve_back(cb_id_in_arr[w], 1);
                         uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in_arr[w]);
-                        noc_async_read_tile(w_tile_index, *s_arr[w], l1_write_addr_in0);
+                        read_tile_from_accessor(w, w_tile_index, l1_write_addr_in0);
                         noc_async_read_barrier();
                         cb_push_back(cb_id_in_arr[w], 1);
                     }
@@ -58,7 +69,7 @@ void kernel_main() {
                     {                                          
                         cb_reserve_back(cb_id_in_arr[a+4], 1);
                         uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in_arr[a+4]);
-                        noc_async_read_tile(a_tile_index, *s_arr[a+4], l1_write_addr_in1);
+                        read_tile_from_accessor(a + 4, a_tile_index, l1_write_addr_in1);
                         noc_async_read_barrier();
                         cb_push_back(cb_id_in_arr[a+4], 1);
                     }
